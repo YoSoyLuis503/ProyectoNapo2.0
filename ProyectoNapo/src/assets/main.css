@@ -15,7 +15,8 @@ html {
 #app {
   max-width: var(--site-max-width);
   margin: 0 auto;
-  padding: var(--site-gutter);
+  padding: 0;
+  /*padding: var(--site-gutter);*/
   font-weight: normal;
   box-sizing: border-box;
 }
