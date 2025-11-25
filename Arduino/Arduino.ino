@@ -1,28 +1,38 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
+#include <Servo.h>
 
-const char* ssid = "Barrera";
-const char* password = "b@rr@r@BZL67";
+// WiFi
+const char* ssid = "RedLuis";
+const char* password = "holahola";
 
+// Firestore
 const char* FIRESTORE_PROJECT = "proyectonapo-4d892";
 const char* API_KEY = "AIzaSyAaPeAYovM851vbHDplPGCbOXz2-mH6_HA";
 
-// Documento fijo en Firestore
-String FIRESTORE_URL =
+String URL_GET =
   "https://firestore.googleapis.com/v1/projects/" +
   String(FIRESTORE_PROJECT) +
-  "/databases/(default)/documents/alertas/sensor1?key=" + API_KEY;
+  "/databases/(default)/documents/estadoGeneral/river?key=" + API_KEY;
 
-// Pines del HC-SR04
-#define TRIG D1
-#define ECHO D2
+// Servos
+Servo servo1;
+Servo servo2;
+
+#define S1 12  // D6
+#define S2 13  // D7
+
 
 void setup() {
   Serial.begin(115200);
 
-  pinMode(TRIG, OUTPUT);
-  pinMode(ECHO, INPUT);
+  // Servos
+  servo1.attach(S1);
+  servo2.attach(S2);
+  servo1.write(0);
+  servo2.write(0);
 
+  // WiFi
   WiFi.begin(ssid, password);
   Serial.print("Conectando");
   while (WiFi.status() != WL_CONNECTED) {
@@ -32,53 +42,65 @@ void setup() {
   Serial.println("\nConectado!");
 }
 
-// Medir distancia
-float medirDistancia() {
-  digitalWrite(TRIG, LOW);
-  delayMicroseconds(2);
-  digitalWrite(TRIG, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(TRIG, LOW);
 
-  long duracion = pulseIn(ECHO, HIGH);
-  float distancia = duracion * 0.034 / 2;
-
-  return distancia;
+// mover servos
+void moverServos(String estado) {
+  if (estado == "Peligro") {
+    servo1.write(90);
+    servo2.write(90);
+  } 
+  else if (estado == "alerta") {
+    servo1.write(45);
+    servo2.write(45);
+  } 
+  else {
+    servo1.write(0);
+    servo2.write(0);
+  }
 }
+
+
+String extraerCampo(String payload, String key) {
+  int pos = payload.indexOf(key);
+  if (pos == -1) return "";
+
+  int start = payload.indexOf("stringValue", pos);
+  if (start == -1) return "";
+
+  start = payload.indexOf(":", start) + 2;
+  int end = payload.indexOf("\"", start);
+
+  return payload.substring(start, end);
+}
+
 
 void loop() {
   if (WiFi.status() == WL_CONNECTED) {
-    HTTPClient http;
+
     WiFiClientSecure client;
     client.setInsecure();
+    HTTPClient http;
 
-    float distancia = medirDistancia();
+    http.begin(client, URL_GET);
+    int code = http.GET();
 
-    Serial.print("Distancia enviada: ");
-    Serial.println(distancia);
+    if (code == 200) {
+      String payload = http.getString();
+      Serial.println("\nFirestore:");
+      Serial.println(payload);
 
-    // Datos en bruto
-    String json =
-      "{"
-        "\"fields\": {"
-          "\"distancia\": {\"doubleValue\": " + String(distancia) + "},"
-          "\"lat\": {\"doubleValue\": 13.474144239341106},"
-          "\"lng\": {\"doubleValue\": -88.159747069461},"
-          "\"timestamp\": {\"stringValue\": \"" + String(millis()) + "\"}"
-        "}"
-      "}";
+      // extraer "estado"
+      String estado = extraerCampo(payload, "estado");
+      Serial.println("Estado leido: " + estado);
 
-    http.begin(client, FIRESTORE_URL);
-    http.addHeader("Content-Type", "application/json");
-
-    int code = http.PATCH(json);  // actualizar documento
-    Serial.println("Firestore code: " + String(code));
-
-    Serial.println("Respuesta Firestore:");
-    Serial.println(http.getString());
+      moverServos(estado);
+    }
+    else {
+      Serial.println("Error GET: " + String(code));
+    }
 
     http.end();
   }
 
-  delay(5000);
+  delay(5000);  // leer cada 5s
 }

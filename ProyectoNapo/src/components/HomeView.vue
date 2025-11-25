@@ -59,22 +59,29 @@ import 'leaflet/dist/leaflet.css'
 import { db } from '@/firebase/firebase'
 import { collection, onSnapshot } from 'firebase/firestore'
 
+// --- Configuración ---
+const ALTURA_SENSOR = 10 // ← cámbialo según tu instalación
+
+// Mapa y marcadores
 const map = ref(null)
 const markers = []
+
+// Colección Firestore
 const alertCollection = collection(db, 'alertas')
 
-// Crear ícono sin CSS scoped
+// Crear ícono circular
 function makeIcon(color) {
   return L.divIcon({
     className: '',
-    html: `<span style="
-      background:${color};
-      width:16px;
-      height:16px;
-      display:block;
-      border-radius:50%;
-      border:2px solid white;
-    "></span>`,
+    html: `
+      <span style="
+        background:${color};
+        width:18px;
+        height:18px;
+        display:block;
+        border-radius:50%;
+        border:2px solid white;">
+      </span>`,
     iconSize: [20, 20],
     iconAnchor: [10, 10],
   })
@@ -83,34 +90,38 @@ function makeIcon(color) {
 function addMarker(doc) {
   const data = doc.data()
 
+  // Validar campos esenciales
   if (!data.lat || !data.lng || data.distancia === undefined) return
 
-  const ALTURA_SENSOR = 10 // cm
-
-  // 1) Calcular crecimiento del río
   const distancia = Number(data.distancia)
+
+  if (isNaN(distancia)) {
+    console.warn('⚠ Valor inválido de distancia:', data.distancia)
+    return
+  }
+
+  // 1) Crecimiento real del río
   const crecimiento = Math.max(0, ALTURA_SENSOR - distancia)
 
-  // 2) Calcular estado automático
-  let estado = 'Tranquilo'
-  if (crecimiento > 8) estado = 'Peligro'
-  else if (crecimiento > 4) estado = 'Alerta'
+  // 2) Estado según crecimiento
+  let estado = 'Normal'
+  if (crecimiento >= 10) estado = 'Peligro'
+  else if (crecimiento >= 5) estado = 'Alerta'
 
-  // 3) Elegir color
+  // 3) Color del marcador
   const color = estado === 'Peligro' ? 'red' : estado === 'Alerta' ? 'orange' : 'green'
 
   // 4) Crear marcador
-  const marker = L.marker([data.lat, data.lng], {
-    icon: makeIcon(color),
-  })
+  const marker = L.marker([data.lat, data.lng], { icon: makeIcon(color) })
 
   // 5) Tooltip
-  const tooltipText = `
-    Estado: ${estado}  
-    Crecimiento: ${crecimiento.toFixed(1)} cm    
-  `.trim()
+  const tooltip = `
+    <strong>${estado}</strong><br>
+    Crecimiento: ${crecimiento.toFixed(1)} cm<br>
+    Distancia cruda: ${distancia} cm
+  `
 
-  marker.bindTooltip(tooltipText, {
+  marker.bindTooltip(tooltip, {
     permanent: false,
     direction: 'top',
     offset: [0, -15],
@@ -120,34 +131,30 @@ function addMarker(doc) {
   markers.push(marker)
 }
 
-// Listener en tiempo real
+// --- Escuchar Firestore en tiempo real ---
 function enableRealtime() {
   onSnapshot(alertCollection, (snapshot) => {
-    // Eliminar marcadores viejos
+    // limpiar marcadores anteriores
     markers.forEach((m) => map.value.removeLayer(m))
     markers.length = 0
 
-    // Agregar nuevos
-    snapshot.forEach((doc) => addMarker(doc))
+    // agregar los nuevos
+    snapshot.docs.forEach((doc) => addMarker(doc))
   })
 }
 
-function locateUser() {
-  map.value.locate({ setView: true, maxZoom: 14 })
-}
-
 onMounted(() => {
-  // Configurar mapa
+  // inicializar mapa
   map.value = L.map('map').setView([13.479453791020822, -88.17785764170928], 11)
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors',
   }).addTo(map.value)
 
-  // ❗ Desactivar creación de alertas (no click)
+  // desactivar creación de alertas
   map.value.off('click')
 
-  // Activar lectura de Firebase en tiempo real
+  // activar Firebase realtime
   enableRealtime()
 })
 </script>
