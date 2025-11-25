@@ -18,12 +18,11 @@
       <h3>Mapa de Alertas</h3>
       <div id="map" class="map"></div>
 
-      <!-- <div class="map-controls">
-        <button class="btn" @click="locateUser">Mi ubicación</button>
-        <button class="btn secondary" @click="clearAlerts">Borrar alertas</button>
-      </div>
+      <!-- 🔥 Nuevo botón -->
+      <button class="btn-whatsapp" @click="activarWhatsApp">
+        🔔 Activar alertas por WhatsApp
+      </button>
 
-      <p class="hint">Haz clic en el mapa para agregar una alerta.</p>-->
     </section>
 
     <!-- NEWS / TIMELINE SECTION -->
@@ -51,19 +50,62 @@
   </div>
 </template>
 
+
 <script setup>
 import { onMounted, ref } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
 import { db } from '@/firebase/firebase'
-import { collection, onSnapshot } from 'firebase/firestore'
+import { collection, onSnapshot, getDocs } from 'firebase/firestore'
 
 const map = ref(null)
 const markers = []
-const alertCollection = collection(db, 'alertas')
 
-// Crear ícono sin CSS scoped
+// Colecciones Firebase
+const alertCollection = collection(db, 'alertas')
+const usersCollection = collection(db, 'usuariosWhatsApp')
+
+// ------------------------------
+// 🔥 FUNCIÓN PARA ENVIAR WHATSAPP
+// ------------------------------
+async function sendWhatsApp(phone, message) {
+  const apiKey = "3034091"  // ⬅️ PON AQUÍ TU API KEY DE CALLMEBOT
+
+  const url = `https://api.callmebot.com/whatsapp.php?phone=${phone}&text=${encodeURIComponent(
+    message
+  )}&apikey=${apiKey}`
+
+  try {
+    await fetch(url)
+    console.log("Mensaje enviado a:", phone)
+  } catch (error) {
+    console.error("Error enviando mensaje:", error)
+  }
+}
+
+// ------------------------------
+// 🔥 ENVÍO MASIVO A LA COMUNIDAD
+// ------------------------------
+async function enviarAlertaComunitaria(estado, crecimiento, sensorName) {
+  const mensaje = `⚠️ ALERTA AUTOMÁTICA DEL SISTEMA ⚠️
+Sensor: ${sensorName}
+Estado detectado: ${estado}
+Crecimiento del río: ${crecimiento} cm.
+Por favor tomar precauciones.`
+
+  const snapshot = await getDocs(usersCollection)
+
+  snapshot.forEach((doc) => {
+    const data = doc.data()
+    sendWhatsApp(data.phone, mensaje)
+  })
+}
+
+
+// ------------------------------
+// CREAR ICONO
+// ------------------------------
 function makeIcon(color) {
   return L.divIcon({
     className: '',
@@ -80,77 +122,113 @@ function makeIcon(color) {
   })
 }
 
+import { addDoc } from "firebase/firestore";
+
+async function activarWhatsApp() {
+  const phone = prompt("Ingresa tu número de WhatsApp (ej: 50371234567):");
+
+  if (!phone || phone.length < 10) {
+    alert("Número inválido");
+    return;
+  }
+
+  alert(
+    "Paso 1: Guarda este número en tus contactos: +34 644 36 39 98\n\n" +
+      "Paso 2: Envíale un mensaje: 'I allow callmebot to send me messages'\n\n" +
+      "Paso 3: Cuando lo hagas, presiona OK para guardar tu número en el sistema."
+  );
+
+  await addDoc(usersCollection, {
+    phone: phone,
+    name: "Usuario registrado"
+  });
+
+  alert("¡Listo! Recibirás alertas cuando el sistema detecte riesgo.");
+}
+
+
+// ------------------------------
+// AGREGAR MARCADOR Y ENVIAR ALERTA SI ES NECESARIO
+// ------------------------------
 function addMarker(doc) {
   const data = doc.data()
-
   if (!data.lat || !data.lng || data.distancia === undefined) return
 
   const ALTURA_SENSOR = 10 // cm
-
-  // 1) Calcular crecimiento del río
   const distancia = Number(data.distancia)
   const crecimiento = Math.max(0, ALTURA_SENSOR - distancia)
 
-  // 2) Calcular estado automático
+  // Determinar estado
   let estado = 'Tranquilo'
   if (crecimiento > 8) estado = 'Peligro'
   else if (crecimiento > 4) estado = 'Alerta'
 
-  // 3) Elegir color
-  const color = estado === 'Peligro' ? 'red' : estado === 'Alerta' ? 'orange' : 'green'
+  const color =
+    estado === 'Peligro' ? 'red' : estado === 'Alerta' ? 'orange' : 'green'
 
-  // 4) Crear marcador
   const marker = L.marker([data.lat, data.lng], {
     icon: makeIcon(color),
   })
 
-  // 5) Tooltip
-  const tooltipText = `
-    Estado: ${estado}  
-    Crecimiento: ${crecimiento.toFixed(1)} cm    
-  `.trim()
-
-  marker.bindTooltip(tooltipText, {
-    permanent: false,
-    direction: 'top',
-    offset: [0, -15],
-  })
+  marker.bindTooltip(
+    `Estado: ${estado}<br>Crecimiento: ${crecimiento.toFixed(1)} cm`,
+    {
+      permanent: false,
+      direction: 'top',
+      offset: [0, -15],
+    }
+  )
 
   marker.addTo(map.value)
   markers.push(marker)
+
+  // ---------------------------------------------------
+  // 🔥 SI ES ALERTA O PELIGRO → ENVIAR WHATSAPP
+  // ---------------------------------------------------
+  if (estado === 'Alerta' || estado === 'Peligro') {
+   const crecimientoFormateado = crecimiento.toFixed(1)
+  enviarAlertaComunitaria(estado, crecimientoFormateado, doc.id)
+  }
 }
 
-// Listener en tiempo real
+// ------------------------------
+// ACTIVAR LECTURA EN TIEMPO REAL
+// ------------------------------
 function enableRealtime() {
   onSnapshot(alertCollection, (snapshot) => {
-    // Eliminar marcadores viejos
     markers.forEach((m) => map.value.removeLayer(m))
     markers.length = 0
 
-    // Agregar nuevos
     snapshot.forEach((doc) => addMarker(doc))
   })
 }
 
+// ------------------------------
+// UBICAR USUARIO
+// ------------------------------
 function locateUser() {
   map.value.locate({ setView: true, maxZoom: 14 })
 }
 
+// ------------------------------
+// INICIALIZAR MAPA
+// ------------------------------
 onMounted(() => {
-  // Configurar mapa
-  map.value = L.map('map').setView([13.479453791020822, -88.17785764170928], 11)
+  map.value = L.map('map').setView(
+    [13.479453791020822, -88.17785764170928],
+    11
+  )
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors',
   }).addTo(map.value)
 
-  // ❗ Desactivar creación de alertas (no click)
   map.value.off('click')
 
-  // Activar lectura de Firebase en tiempo real
   enableRealtime()
 })
 </script>
+
 
 <style scoped>
 /* Leaflet map container */
@@ -160,6 +238,22 @@ onMounted(() => {
   border-radius: 12px;
   overflow: hidden;
 }
+
+.btn-whatsapp {
+  background: #25d366;
+  color: white;
+  padding: 12px 18px;
+  border-radius: 10px;
+  font-size: 1rem;
+  border: none;
+  cursor: pointer;
+  margin-top: 15px;
+}
+
+.btn-whatsapp:hover {
+  background: #1ebe5d;
+}
+
 
 /* --- BACKGROUND GENERAL (suave, claro) --- */
 .hero-bg {
