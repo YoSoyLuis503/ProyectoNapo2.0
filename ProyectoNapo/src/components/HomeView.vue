@@ -2,47 +2,52 @@
   <div class="home-container">
     <div class="hero-bg" aria-hidden="true"></div>
 
-    <!-- NAVBAR -->
     <header class="navbar">
-      <h1 class="logo">Alertas Climáticas</h1>
+      <h1 class="logo">🌊 Alertas Climáticas</h1>
     </header>
 
-    <!-- HERO SECTION -->
-    <section class="hero">
-      <h2>Monitoreo de desbordamiento en tiempo real</h2>
-      <p>Sistema automatizado basado en sensores y transmisión en redes.</p>
+    <section class="hero content-card">
+      <div class="hero-content">
+        <h2>Monitoreo Hídrico en Tiempo Real</h2>
+        <p>Sistema automatizado basado en sensores para la prevención de desbordamientos.</p>
+      </div>
     </section>
 
-    <!-- MAP + ALERTS SECTION -->
-    <section class="map-section">
-      <h3>Mapa de Alertas</h3>
+    <section class="map-section content-card">
+      <h3 class="section-title">🗺️ Mapa de Alertas de Desborde</h3>
       <div id="map" class="map"></div>
 
-      <!-- 🔥 Nuevo botón -->
-      <button class="btn-whatsapp" @click="activarWhatsApp">🔔 Activar alertas por WhatsApp</button>
+      <button class="btn-whatsapp primary-action" @click="activarWhatsApp">
+        🔔 **Activar Alertas por WhatsApp**
+      </button>
     </section>
 
-    <!-- NEWS / TIMELINE SECTION -->
-    <section class="news-section">
-      <h3>Últimas Noticias</h3>
+    <section class="news-section content-card">
+      <h3 class="section-title">📰 Últimas Actualizaciones</h3>
 
       <div class="news-list">
-        <div class="news-item" v-for="n in news" :key="n.id">
-          <h4>{{ n.title }}</h4>
-          <p>{{ n.text }}</p>
-          <span class="badge" :class="n.type">{{ n.type }}</span>
+        <div
+          class="news-item alert-card"
+          :class="`type-${n.type.toLowerCase()}`"
+          v-for="n in news"
+          :key="n.id"
+        >
+          <div class="content">
+            <h4>{{ n.title }}</h4>
+            <p>{{ n.text }}</p>
+          </div>
+          <span class="badge">{{ n.type.toUpperCase() }}</span>
         </div>
       </div>
     </section>
 
-    <!-- TWITTER SECTION -->
-    <section class="twitter-section">
-      <h3>Alertas en Redes</h3>
+    <section class="twitter-section content-card">
+      <h3 class="section-title">📢 Reportes y Noticias en Redes</h3>
+      <p>Síguenos para información inmediata.</p>
     </section>
 
-    <!-- FOOTER -->
     <footer>
-      <p>© 2025 Sistema de Alerta Río. Proyecto académico.</p>
+      <p>© 2025 Sistema de Alerta Río | Proyecto académico con fines educativos.</p>
     </footer>
   </div>
 </template>
@@ -53,17 +58,43 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
 import { db } from '@/firebase/firebase'
-import { collection, onSnapshot, getDocs } from 'firebase/firestore'
+import { collection, onSnapshot, addDoc } from 'firebase/firestore'
 
-// --- Configuración ---
-const ALTURA_SENSOR = 10 // ← cámbialo según tu instalación
+// ---------------------------
+// CONFIG GENERAL
+// ---------------------------
+const ALTURA_SENSOR = 10 // distancia desde el sensor hasta el agua en condiciones normales
 
-// Mapa y marcadores
 const map = ref(null)
 const markers = []
-const alertCollection = collection(db, 'alertas')
 
-// Crear ícono sin CSS scoped
+// Firebase collections
+const alertCollection = collection(db, 'alertas')
+const usersCollection = collection(db, 'usuariosWhatsapp')
+
+// ---------------------------
+// ICONO DE ALERTA
+// ---------------------------
+const news = ref([
+  {
+    id: 1,
+    title: 'Reporte de Bajada de Nivel',
+    text: 'El río ha regresado a niveles normales en la zona norte.',
+    type: 'ok',
+  },
+  {
+    id: 2,
+    title: 'Pre-alerta por Lluvias Fuertes',
+    text: 'Se esperan precipitaciones intensas en las próximas 6 horas.',
+    type: 'alert',
+  },
+  {
+    id: 3,
+    title: 'Desbordamiento en Sector X',
+    text: 'Se pide a los habitantes de la zona evacuar de inmediato.',
+    type: 'danger',
+  },
+])
 function makeIcon(color) {
   return L.divIcon({
     className: '',
@@ -81,10 +112,11 @@ function makeIcon(color) {
   })
 }
 
-import { addDoc } from 'firebase/firestore'
-
+// ---------------------------
+// REGISTRAR USUARIO WHATSAPP
+// ---------------------------
 async function activarWhatsApp() {
-  const phone = prompt('Ingresa tu número de WhatsApp (ej: 50371234567):')
+  const phone = prompt('Ingresa tu número en formato internacional (ej: 50371234567):')
 
   if (!phone || phone.length < 10) {
     alert('Número inválido')
@@ -92,57 +124,53 @@ async function activarWhatsApp() {
   }
 
   alert(
-    'Paso 1: Guarda este número en tus contactos: +34 644 36 39 98\n\n' +
-      "Paso 2: Envíale un mensaje: 'I allow callmebot to send me messages'\n\n" +
-      'Paso 3: Cuando lo hagas, presiona OK para guardar tu número en el sistema.',
+    'Paso 1: Guarda este número: +34 644 36 39 98\n\n' +
+      "Paso 2: Envíale este mensaje: 'I allow callmebot to send me messages'\n\n" +
+      'Después de eso presiona OK.',
   )
 
   await addDoc(usersCollection, {
-    phone: phone,
-    name: 'Usuario registrado',
+    phone,
+    registrado: true,
   })
 
-  alert('¡Listo! Recibirás alertas cuando el sistema detecte riesgo.')
+  alert('¡Registrado correctamente!')
 }
 
-// ------------------------------
-// AGREGAR MARCADOR Y ENVIAR ALERTA SI ES NECESARIO
-// ------------------------------
+// ---------------------------
+// AGREGAR MARCADOR EN MAPA
+// ---------------------------
 function addMarker(doc) {
   const data = doc.data()
 
   if (!data.lat || !data.lng || data.distancia === undefined) return
 
-  const ALTURA_SENSOR = 10 // cm
-
-  // 1) Calcular crecimiento del río
   const distancia = Number(data.distancia)
 
   if (isNaN(distancia)) {
-    console.warn('⚠ Valor inválido de distancia:', data.distancia)
+    console.warn('Distancia inválida:', data.distancia)
     return
   }
 
-  // 1) Crecimiento real del río
+  // Crecimiento real
   const crecimiento = Math.max(0, ALTURA_SENSOR - distancia)
 
-  // 2) Calcular estado automático
+  // Estado
   let estado = 'Tranquilo'
-  if (crecimiento > 8) estado = 'Peligro'
-  else if (crecimiento > 4) estado = 'Alerta'
+  if (crecimiento >= 8) estado = 'Peligro'
+  else if (crecimiento >= 4) estado = 'Alerta'
 
-  // 3) Elegir color
+  // Color
   const color = estado === 'Peligro' ? 'red' : estado === 'Alerta' ? 'orange' : 'green'
 
-  // 4) Crear marcador
+  // Marcar
   const marker = L.marker([data.lat, data.lng], {
     icon: makeIcon(color),
   })
 
-  // 5) Tooltip
   const tooltipText = `
-    Estado: ${estado}  
-    Crecimiento: ${crecimiento.toFixed(1)} cm    
+    Estado: ${estado}
+    Crecimiento: ${crecimiento.toFixed(1)} cm
   `.trim()
 
   marker.bindTooltip(tooltipText, {
@@ -155,248 +183,305 @@ function addMarker(doc) {
   markers.push(marker)
 }
 
-// Listener en tiempo real
+// ---------------------------
+// TIEMPO REAL
+// ---------------------------
 function enableRealtime() {
   onSnapshot(alertCollection, (snapshot) => {
-    // Eliminar marcadores viejos
+    // limpiar
     markers.forEach((m) => map.value.removeLayer(m))
     markers.length = 0
 
-    // Agregar nuevos
+    // cargar
     snapshot.forEach((doc) => addMarker(doc))
   })
 }
 
-function locateUser() {
-  map.value.locate({ setView: true, maxZoom: 14 })
-}
-
-// ------------------------------
+// ---------------------------
 // INICIALIZAR MAPA
-// ------------------------------
+// ---------------------------
 onMounted(() => {
-  // Configurar mapa
   map.value = L.map('map').setView([13.479453791020822, -88.17785764170928], 11)
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors',
   }).addTo(map.value)
 
-  // ❗ Desactivar creación de alertas (no click)
+  // Desactivar agregar alertas con clic
   map.value.off('click')
 
-  // Activar lectura de Firebase en tiempo real
+  // Activar modo realtime
   enableRealtime()
 })
 </script>
 
 <style scoped>
-/* Leaflet map container */
-.leaflet-container {
-  width: 100% !important;
-  height: 350px !important;
-  border-radius: 12px;
-  overflow: hidden;
+/* Fuente futurista / moderna */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Outfit:wght@300;500;700;800&display=swap');
+
+:root {
+  --bg-dark: #0c0f14;
+  --bg-card: #161a20;
+  --bg-card-light: #1d232c;
+  --txt-main: #f5faff;
+  --txt-muted: #98a3b3;
+
+  --green-main: #25d366;
+  --green-ok: #4caf50;
+  --orange-alert: #ff9800;
+  --red-danger: #ff4d4d;
+
+  --border: #262c35;
+
+  --glow-green: 0 0 15px rgba(37, 211, 102, 0.45);
+  --glow-red: 0 0 18px rgba(255, 77, 77, 0.55);
 }
 
-.btn-whatsapp {
-  background: #25d366;
-  color: white;
-  padding: 12px 18px;
-  border-radius: 10px;
-  font-size: 1rem;
-  border: none;
-  cursor: pointer;
-  margin-top: 15px;
-}
-
-.btn-whatsapp:hover {
-  background: #1ebe5d;
-}
-
-/* --- BACKGROUND GENERAL (suave, claro) --- */
+/* 🔥 Fondo animado con gradiente futurista */
 .hero-bg {
   position: fixed;
   inset: 0;
-  background: linear-gradient(180deg, rgba(240, 250, 245, 0.9) 0%, rgba(225, 245, 235, 0.95) 60%);
-  z-index: -2;
+  background:
+    radial-gradient(circle at 20% 30%, #1a2330 0%, #0c0f14 55%),
+    radial-gradient(circle at 80% 70%, #14212b 0%, #0c0f14 60%);
+  background-size: 200% 200%;
+  animation: bgMove 10s alternate-reverse infinite ease-in-out;
+  z-index: -5;
 }
 
-/* --- CONTENEDOR PRINCIPAL --- */
-.home-container {
-  color: #0b3d2e;
-  font-family: 'Source Sans Pro', sans-serif;
-  width: 100%;
-  max-width: 100%;
-  margin: 0;
-  box-sizing: border-box;
+@keyframes bgMove {
+  0% {
+    background-position: 0% 0%;
+  }
+  100% {
+    background-position: 100% 100%;
+  }
 }
 
-/* --- NAVBAR (clarita, ambiental) --- */
+/* ===================================
+   NAV BAR
+   =================================== */
 .navbar {
-  padding: clamp(0.8rem, 1.8vw, 1.4rem) var(--container-inline, 1rem);
-  background: #f4fbf7;
-  border-bottom: 2px solid #cfe9d9;
+  padding: 1rem 2rem;
+  background: rgba(22, 26, 32, 0.9);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 20;
 }
 
-/* Título principal */
 .logo {
-  font-size: clamp(1.6rem, 3.4vw, 2.6rem);
+  font-size: 2rem;
   font-weight: 800;
-  color: #0b3d2e;
-  letter-spacing: 1px;
+  font-family: 'Outfit', sans-serif;
+  color: var(--green-main);
+  text-shadow: var(--glow-green);
 }
 
-/* --- HERO SECTION --- */
+/* ===================================
+   HERO (PORTADA)
+   =================================== */
 .hero {
   text-align: center;
-  padding: 3rem 1rem;
-  margin-top: 1.5rem;
-  background: #ffffffaa;
-  border-radius: 14px;
-  width: min(1200px, 96%);
-  margin-inline: auto;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+  padding: 4rem 1rem;
+  width: min(1100px, 96%);
+  margin: 2rem auto;
+
+  border-radius: 20px;
+  background: linear-gradient(135deg, #161a20cc, #1d232ccc);
+  backdrop-filter: blur(25px);
+
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
 }
 
 .hero h2 {
-  font-size: clamp(1.8rem, 3.6vw, 2.8rem);
-  font-weight: 700;
-  color: #0f4b36;
+  font-size: clamp(2.1rem, 4vw, 3.3rem);
+  color: var(--txt-main);
+  font-weight: 800;
+  margin-bottom: 0.5rem;
+  font-family: 'Outfit', sans-serif;
 }
 
 .hero p {
-  font-size: clamp(1.05rem, 1.8vw, 1.25rem);
-  opacity: 0.8;
+  color: var(--txt-muted);
+  font-size: 1.2rem;
+  max-width: 700px;
+  margin: 0 auto;
 }
 
-/* --- MAP SECTION --- */
-.map-section {
-  padding: 2rem;
-  background: #ffffffaa;
+/* Estado general */
+.status-indicator {
   margin-top: 1.5rem;
-  border-radius: 14px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
-  width: min(1200px, 96%);
-  margin-inline: auto;
-}
-
-.map {
-  height: clamp(240px, 45vh, 600px);
-  width: 100%;
+  padding: 1rem 1.6rem;
   border-radius: 12px;
+  font-size: 1.2rem;
+
+  border-left: 4px solid;
+  background: #0f1318;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
 }
 
-/* Buttons */
-.map-controls {
-  display: flex;
-  gap: 0.7rem;
-  flex-wrap: wrap;
-  justify-content: center;
-  margin-top: 0.5rem;
+.status-indicator.danger {
+  border-left-color: var(--red-danger);
+  color: var(--red-danger);
+  text-shadow: var(--glow-red);
 }
 
-.btn {
-  background: #2e8b57;
-  color: white;
-  padding: 0.65rem 1rem;
-  border-radius: 8px;
-  font-weight: 700;
-  cursor: pointer;
-  border: none;
-  transition: 0.2s;
-}
-
-.btn:hover {
-  background: #256f45;
-}
-
-.btn.secondary {
-  background: #c19a6b;
-  color: white;
-}
-
-.btn.secondary:hover {
-  background: #9d7a52;
-}
-
-.hint {
-  font-size: 0.95rem;
-  opacity: 0.75;
-  text-align: center;
-  margin-top: 0.5rem;
-}
-
-/* --- NEWS SECTION --- */
-.news-section {
+/* ===================================
+   TARJETAS GLOBAL (Glass Neo)
+   =================================== */
+.glass-card {
+  width: min(1100px, 96%);
+  margin: 2rem auto;
   padding: 2rem;
-  background: #ffffffaa;
-  margin-top: 1.5rem;
-  border-radius: 14px;
-  width: min(1200px, 96%);
-  margin-inline: auto;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+
+  background: linear-gradient(135deg, #161a20e0, #1d232ce0);
+  border-radius: 18px;
+  border: 1px solid #2a303b;
+  backdrop-filter: blur(18px);
+
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.45);
+  transition:
+    transform 0.3s ease,
+    border 0.3s ease;
 }
 
+.glass-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--green-main);
+}
+
+/* Títulos */
+.section-title {
+  font-size: 1.8rem;
+  margin-bottom: 1.3rem;
+  font-weight: 700;
+  color: var(--txt-main);
+  font-family: 'Outfit';
+}
+
+/* ===================================
+   MAPA
+   =================================== */
+.map {
+  height: clamp(300px, 50vh, 650px);
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.leaflet-container {
+  background: #101419 !important;
+}
+
+/* ===================================
+   BOTÓN WHATSAPP
+   =================================== */
+.btn-whatsapp {
+  margin-top: 1.5rem;
+  padding: 14px 24px;
+  border-radius: 12px;
+
+  background: var(--green-main);
+  color: #0c0f14;
+  font-weight: 800;
+  font-size: 1.1rem;
+
+  border: none;
+  cursor: pointer;
+
+  box-shadow: var(--glow-green);
+  transition: 0.3s ease;
+}
+
+.btn-whatsapp:hover {
+  background: #1ebe5e;
+  transform: translateY(-2px);
+}
+
+/* ===================================
+   LISTA DE ALERTAS (modern cards)
+   =================================== */
 .news-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 1rem;
+  gap: 1.4rem;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
-.news-item {
-  padding: 1rem;
+.alert-card {
+  padding: 1.3rem;
   border-radius: 12px;
-  background: #f6fff8;
-  border: 1px solid #cde8d6;
+  background: #0f1318;
+
+  border-left: 5px solid;
+  transition: 0.25s ease;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.35);
 }
 
-.news-item .badge {
-  padding: 0.3rem 0.7rem;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  color: white;
+.alert-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.45);
 }
 
-.badge.ok {
-  background: #2e8b57;
-}
-.badge.alert {
-  background: #e4a11b;
-}
-.badge.danger {
-  background: #c62828;
+.alert-card h4 {
+  color: var(--txt-main);
+  font-weight: 600;
 }
 
-/* Twitter */
-.twitter-section {
-  padding: 2rem;
-  background: #ffffffaa;
-  margin-top: 1.5rem;
-  border-radius: 14px;
-  width: min(1200px, 96%);
-  margin-inline: auto;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+.alert-card p {
+  color: var(--txt-muted);
+  font-size: 0.9rem;
 }
 
-/* Footer */
+.alert-card .badge {
+  padding: 0.35rem 0.8rem;
+  font-size: 0.75rem;
+  border-radius: 5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #000;
+}
+
+.type-ok {
+  border-left-color: var(--green-ok);
+}
+.type-alert {
+  border-left-color: var(--orange-alert);
+}
+.type-danger {
+  border-left-color: var(--red-danger);
+}
+
+.type-ok .badge {
+  background: var(--green-ok);
+}
+.type-alert .badge {
+  background: var(--orange-alert);
+}
+.type-danger .badge {
+  background: var(--red-danger);
+}
+
+/* ===================================
+   TWITTER SECTION
+   =================================== */
+.twitter-section p {
+  color: var(--txt-muted);
+}
+
+/* ===================================
+   FOOTER
+   =================================== */
 footer {
+  margin-top: 2rem;
   padding: 1.2rem;
   text-align: center;
-  background: #ffffffaa;
-  margin-top: 1.5rem;
-  border-top: 2px solid #cfe9d9;
-}
-
-@media (min-width: 900px) {
-  .map-section {
-    align-items: stretch;
-  }
-  .map-controls {
-    justify-content: flex-start;
-  }
+  color: var(--txt-muted);
+  border-top: 1px solid var(--border);
+  background: rgba(22, 26, 32, 0.7);
 }
 </style>
