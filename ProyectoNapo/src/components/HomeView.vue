@@ -3,7 +3,7 @@
     <div class="hero-bg" aria-hidden="true"></div>
 
     <header class="navbar">
-      <h1 class="logo">🌊 Alertas Climáticas</h1>
+      <h1 class="logo">Alertas Climáticas</h1>
     </header>
 
     <section class="hero content-card">
@@ -14,16 +14,16 @@
     </section>
 
     <section class="map-section content-card">
-      <h3 class="section-title">🗺️ Mapa de Alertas de Desborde</h3>
+      <h3 class="section-title">Mapa de Alertas de Desborde</h3>
       <div id="map" class="map"></div>
 
       <button class="btn-whatsapp primary-action" @click="activarWhatsApp">
-        🔔 **Activar Alertas por WhatsApp**
+        Activar Alertas por WhatsApp
       </button>
     </section>
 
     <section class="news-section content-card">
-      <h3 class="section-title">📰 Últimas Actualizaciones</h3>
+      <h3 class="section-title">Últimas Actualizaciones</h3>
 
       <div class="news-list">
         <div
@@ -42,7 +42,7 @@
     </section>
 
     <section class="twitter-section content-card">
-      <h3 class="section-title">📢 Reportes y Noticias en Redes</h3>
+      <h3 class="section-title">Reportes y Noticias en Redes</h3>
       <p>Síguenos para información inmediata.</p>
     </section>
 
@@ -60,21 +60,18 @@ import 'leaflet/dist/leaflet.css'
 import { db } from '@/firebase/firebase'
 import { collection, onSnapshot, addDoc } from 'firebase/firestore'
 
-// ---------------------------
 // CONFIG GENERAL
-// ---------------------------
-const ALTURA_SENSOR = 10 // distancia desde el sensor hasta el agua en condiciones normales
+const ALTURA_SENSOR = 10 // Distancia normal del agua al sensor
 
 const map = ref(null)
 const markers = []
 
-// Firebase collections
+// Colecciones de Firebase
 const alertCollection = collection(db, 'alertas')
-const usersCollection = collection(db, 'usuariosWhatsapp')
+// 💡 CORRECCIÓN: Se cambió a 'usuariosWhatsApp' para coincidir con el nombre de tu colección.
+const usersCollection = collection(db, 'usuariosWhatsApp')
 
-// ---------------------------
 // ICONO DE ALERTA
-// ---------------------------
 const news = ref([
   {
     id: 1,
@@ -95,6 +92,8 @@ const news = ref([
     type: 'danger',
   },
 ])
+
+// Crear icono de marcador según color
 function makeIcon(color) {
   return L.divIcon({
     className: '',
@@ -112,9 +111,7 @@ function makeIcon(color) {
   })
 }
 
-// ---------------------------
-// REGISTRAR USUARIO WHATSAPP
-// ---------------------------
+// REGISTRAR USUARIO WHATSAPP CON API KEY DE CALLMEBOT
 async function activarWhatsApp() {
   const phone = prompt('Ingresa tu número en formato internacional (ej: 50371234567):')
 
@@ -123,50 +120,53 @@ async function activarWhatsApp() {
     return
   }
 
+  // Instrucciones para obtener la API Key
   alert(
-    'Paso 1: Guarda este número: +34 644 36 39 98\n\n' +
-      "Paso 2: Envíale este mensaje: 'I allow callmebot to send me messages'\n\n" +
-      'Después de eso presiona OK.',
+    'Paso 1: Guarda este número: +34 694 29 84 96\n\n' +
+      "Paso 2: Envíale el mensaje: 'I allow callmebot to send me messages'\n\n" +
+      'Paso 3: Cuando te responda, copia tu API KEY y presiona OK.',
   )
 
+  const apikey = prompt('Pega aquí tu API KEY de CallMeBot:')
+
+  if (!apikey || apikey.length < 4) {
+    alert('API KEY inválida. No se pudo registrar.')
+    return
+  }
+
+  // Guardar teléfono y API Key en Firebase
   await addDoc(usersCollection, {
     phone,
+    apikey,
     registrado: true,
+    name: "Usuario registrado"
   })
 
-  alert('¡Registrado correctamente!')
+  alert('¡Registrado correctamente! Ahora recibirás alertas automáticas por WhatsApp.')
 }
 
-// ---------------------------
 // AGREGAR MARCADOR EN MAPA
-// ---------------------------
 function addMarker(doc) {
   const data = doc.data()
 
   if (!data.lat || !data.lng || data.distancia === undefined) return
 
   const distancia = Number(data.distancia)
-
   if (isNaN(distancia)) {
     console.warn('Distancia inválida:', data.distancia)
     return
   }
 
-  // Crecimiento real
   const crecimiento = Math.max(0, ALTURA_SENSOR - distancia)
 
-  // Estado
+  // Determinar estado de alerta
   let estado = 'Tranquilo'
   if (crecimiento >= 8) estado = 'Peligro'
   else if (crecimiento >= 4) estado = 'Alerta'
 
-  // Color
   const color = estado === 'Peligro' ? 'red' : estado === 'Alerta' ? 'orange' : 'green'
 
-  // Marcar
-  const marker = L.marker([data.lat, data.lng], {
-    icon: makeIcon(color),
-  })
+  const marker = L.marker([data.lat, data.lng], { icon: makeIcon(color) })
 
   const tooltipText = `
     Estado: ${estado}
@@ -181,25 +181,22 @@ function addMarker(doc) {
 
   marker.addTo(map.value)
   markers.push(marker)
+
+  // Aquí podrías llamar a la función para enviar alertas por WhatsApp si quieres
+  // ejemplo: if (estado !== 'Tranquilo') enviarAlertaComunitaria(estado, crecimiento, doc.id)
 }
 
-// ---------------------------
 // TIEMPO REAL
-// ---------------------------
 function enableRealtime() {
   onSnapshot(alertCollection, (snapshot) => {
-    // limpiar
     markers.forEach((m) => map.value.removeLayer(m))
     markers.length = 0
 
-    // cargar
     snapshot.forEach((doc) => addMarker(doc))
   })
 }
 
-// ---------------------------
 // INICIALIZAR MAPA
-// ---------------------------
 onMounted(() => {
   map.value = L.map('map').setView([13.479453791020822, -88.17785764170928], 11)
 
@@ -207,17 +204,15 @@ onMounted(() => {
     attribution: '© OpenStreetMap contributors',
   }).addTo(map.value)
 
-  // Desactivar agregar alertas con clic
   map.value.off('click')
-
-  // Activar modo realtime
   enableRealtime()
 })
 </script>
 
+
 <style scoped>
-/* Fuente futurista / moderna */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Outfit:wght@300;500;700;800&display=swap');
+/* CONFIGURACIÓN GLOBAL */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Outfit:wght@300;500;700;800&family=Space+Grotesk:wght@400;700&display=swap');
 
 :root {
   --bg-dark: #0c0f14;
@@ -226,7 +221,10 @@ onMounted(() => {
   --txt-main: #f5faff;
   --txt-muted: #98a3b3;
 
-  --green-main: #25d366;
+  --blue-main: #4a90e2; /* Nuevo color azul principal para botón */
+  --blue-glow: 0 0 15px rgba(74, 144, 226, 0.6); /* Nuevo resplandor azul */
+
+  --green-main: #25d366; /* Originalmente para el botón, ahora es el logo/hover de card */
   --green-ok: #4caf50;
   --orange-alert: #ff9800;
   --red-danger: #ff4d4d;
@@ -237,7 +235,14 @@ onMounted(() => {
   --glow-red: 0 0 18px rgba(255, 77, 77, 0.55);
 }
 
-/* 🔥 Fondo animado con gradiente futurista */
+/* Aplicar la fuente principal al cuerpo y asegurar el color base */
+body {
+  font-family: 'Inter', sans-serif;
+  color: var(--txt-main);
+  line-height: 1.6;
+}
+
+/* Fondo animado con gradiente futurista */
 .hero-bg {
   position: fixed;
   inset: 0;
@@ -258,9 +263,7 @@ onMounted(() => {
   }
 }
 
-/* ===================================
-   NAV BAR
-   =================================== */
+/* NAV BAR */
 .navbar {
   padding: 1rem 2rem;
   background: rgba(22, 26, 32, 0.9);
@@ -274,14 +277,12 @@ onMounted(() => {
 .logo {
   font-size: 2rem;
   font-weight: 800;
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Outfit', sans-serif; 
   color: var(--green-main);
   text-shadow: var(--glow-green);
 }
 
-/* ===================================
-   HERO (PORTADA)
-   =================================== */
+/* HERO (PORTADA) */
 .hero {
   text-align: center;
   padding: 4rem 1rem;
@@ -302,6 +303,8 @@ onMounted(() => {
   font-weight: 800;
   margin-bottom: 0.5rem;
   font-family: 'Outfit', sans-serif;
+  /* Sombra para resplandor */
+  text-shadow: 0 0 1px var(--txt-main), 0 0 8px rgba(245, 250, 255, 0.2); 
 }
 
 .hero p {
@@ -329,10 +332,8 @@ onMounted(() => {
   text-shadow: var(--glow-red);
 }
 
-/* ===================================
-   TARJETAS GLOBAL (Glass Neo)
-   =================================== */
-.glass-card {
+/* TARJETAS GLOBAL */
+.content-card {
   width: min(1100px, 96%);
   margin: 2rem auto;
   padding: 2rem;
@@ -348,23 +349,23 @@ onMounted(() => {
     border 0.3s ease;
 }
 
-.glass-card:hover {
+.content-card:hover {
   transform: translateY(-3px);
   border-color: var(--green-main);
 }
 
-/* Títulos */
+/* Títulos de Sección */
 .section-title {
   font-size: 1.8rem;
   margin-bottom: 1.3rem;
   font-weight: 700;
   color: var(--txt-main);
   font-family: 'Outfit';
+  /* Sombra para resplandor */
+  text-shadow: 0 0 1px var(--txt-main), 0 0 5px rgba(245, 250, 255, 0.1); 
 }
 
-/* ===================================
-   MAPA
-   =================================== */
+/* MAPA */
 .map {
   height: clamp(300px, 50vh, 650px);
   width: 100%;
@@ -378,34 +379,33 @@ onMounted(() => {
   background: #101419 !important;
 }
 
-/* ===================================
-   BOTÓN WHATSAPP
-   =================================== */
+/* BOTÓN WHATSAPP */
 .btn-whatsapp {
   margin-top: 1.5rem;
   padding: 14px 24px;
   border-radius: 12px;
 
-  background: var(--green-main);
-  color: #0c0f14;
+  /* Color azul aplicado */
+  background: var(--blue-main); 
+  color: #01ff01;
   font-weight: 800;
   font-size: 1.1rem;
 
   border: none;
   cursor: pointer;
 
-  box-shadow: var(--glow-green);
+  /* Resplandor azul aplicado */
+  box-shadow: var(--blue-glow); 
   transition: 0.3s ease;
 }
 
 .btn-whatsapp:hover {
-  background: #1ebe5e;
+  /* Tono de azul más claro al pasar el ratón */
+  background: #6aabff; 
   transform: translateY(-2px);
 }
 
-/* ===================================
-   LISTA DE ALERTAS (modern cards)
-   =================================== */
+/* LISTA DE ALERTAS */
 .news-list {
   display: grid;
   gap: 1.4rem;
@@ -430,6 +430,7 @@ onMounted(() => {
 .alert-card h4 {
   color: var(--txt-main);
   font-weight: 600;
+  font-family: 'Inter', sans-serif;
 }
 
 .alert-card p {
@@ -466,16 +467,12 @@ onMounted(() => {
   background: var(--red-danger);
 }
 
-/* ===================================
-   TWITTER SECTION
-   =================================== */
+/* TWITTER SECTION */
 .twitter-section p {
   color: var(--txt-muted);
 }
 
-/* ===================================
-   FOOTER
-   =================================== */
+/* FOOTER */
 footer {
   margin-top: 2rem;
   padding: 1.2rem;
